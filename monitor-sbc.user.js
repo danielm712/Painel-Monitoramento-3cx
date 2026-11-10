@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         3CX | Monitor de SBCs
 // @namespace    local.3cx.sbc.monitor
-// @version      1.0.4
+// @version      1.0.5
 // @description  Monitor de SBCs em qualquer aba. Abertura do dia fixa, situação atual separada e atualização pelo próprio painel.
 // @updateURL    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // @downloadURL  https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
@@ -17,7 +17,7 @@
 // ==/UserScript==
 
 // REGRA DE PUBLICAÇÃO — obrigatória para qualquer IA que altere este arquivo:
-// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.4 → 1.0.5).
+// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.5 → 1.0.6).
 // 2. Mantenha @updateURL, @downloadURL e UPDATE_URL iguais a:
 //    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // 3. Copie este arquivo para o clone do repositório como monitor-sbc.user.js.
@@ -54,7 +54,7 @@ config=loadConfig(config);
 const state={open:!!layout.open,section:['history','alerts'].includes(layout.section)?layout.section:'servers',settings:false,view:'all',filter:'all',busy:false,lastPoll:0,snapshots:{},captureMessage:'',alertDay:null,historyDay:null,alertFollowUp:null,currentOpen:false,editingNameOrigin:null,statsHelpOpen:false,technicalOpen:false,technicalScroll:0,pendingAlert:GM_getValue(PENDING_ALERT_KEY,null),expanded:null,historyFilter:['all','caiu','voltou','sessao','info','erro'].includes(layout.historyFilter)?layout.historyFilter:'all',prefs:false,returnTo:'',menu:false,confirm:false,hiddenTab:false,startedAt:Date.now(),errorDetails:''};
 let stopped=false, acquiring=false, leader=false, commandSeen=GM_getValue(COMMAND,null)?.id, pollStart=0, captureBusy=false;
 // ---- UI 0.9.3: tokens, Shadow DOM, helpers (DOM nodes only: h() + createElementNS) ----
-const VERSION='1.0.4', PREFS='sbc-monitor-v91:prefs';
+const VERSION='1.0.5', PREFS='sbc-monitor-v91:prefs';
 const PREF_DEFAULTS=Object.freeze({theme:'auto',compact:false,animations:true,anySite:true,rememberPosition:true});
 function loadPrefs(v){const p={...PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})};if(!['light','dark','auto'].includes(p.theme))p.theme='auto';for(const k of ['compact','animations','anySite','rememberPosition'])p[k]=!!p[k];return p;}
 let prefs=loadPrefs(GM_getValue(PREFS,null));
@@ -158,14 +158,19 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .ti.compact-evt{cursor:default;padding:var(--sp-2) 0}
 .min0{min-width:0}
 .follow-sec{margin-top:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--border)}
-.acard{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--bg);flex:none}
-.acard.wait{border-color:color-mix(in srgb,var(--warning) 50%,var(--border))}
-.acard .hd{display:flex;align-items:baseline;gap:8px}
-.acard .hd b{font-size:var(--fs-sm);font-weight:600;color:var(--text-muted)}
-.acard .fact{font-size:var(--fs-lg);font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-.st{margin-left:auto;font-size:var(--fs-xs);font-weight:600;flex:none}
-.st.ok{color:var(--success)}
-.st.no{color:var(--warning)}
+.acards{display:flex;flex-direction:column;gap:6px;flex:none}
+.acard{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);flex:none}
+.acard.wait{border-color:color-mix(in srgb,var(--warning) 35%,var(--border))}
+.acard-hit{display:flex;flex-direction:column;align-items:stretch;gap:1px;width:100%;text-align:left}
+.acard .hd{display:flex;align-items:center;gap:6px}
+.acard .hd b{font-size:11px;font-weight:600;color:var(--text-muted)}
+.acard .fact{font-size:12px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.acard .row{margin-top:2px}
+.acard .btn{height:20px;padding:0 6px;font-size:11px;box-shadow:none}
+.acard .msg{margin:4px 0 0;padding:6px 8px}
+.acard .ti{padding:3px 0;gap:8px;border-top:0}
+.st{margin-left:auto;display:inline-flex;color:var(--text-subtle);opacity:.55;flex:none}
+.st.ok{color:var(--success);opacity:.7}
 .tw{border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;flex:none}
 table{width:100%;border-collapse:collapse}
 th{position:sticky;top:0;background:var(--bg-subtle);color:var(--text-muted);font-size:var(--fs-sm);font-weight:600;text-align:left;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--border)}
@@ -260,7 +265,7 @@ const ICONS={
  act:[P('M22 12h-4l-3 9L9 3l-3 9H2')],sun:[C(12,12,4),P('M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4')],
  moon:[P('M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z')],sliders:[P('M20 7h-9M14 17H5'),C(17,17,3),C(7,7,3)],minus:[P('M5 12h14')],x:[P('M18 6 6 18M6 6l12 12')],
  refresh:[P('M21 12a9 9 0 1 1-3-6.7L21 8'),P('M21 3v5h-5')],copy:[R(9,9,13,13,2),P('M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1')],
- check:[P('M20 6 9 17l-5-5')],checkCircle:[C(12,12,10),P('m9 12 2 2 4-4')],xCircle:[C(12,12,10),P('m15 9-6 6M9 9l6 6')],
+ check:[P('M20 6 9 17l-5-5')],circle:[C(12,12,7)],checkCircle:[C(12,12,10),P('m9 12 2 2 4-4')],xCircle:[C(12,12,10),P('m15 9-6 6M9 9l6 6')],
  down:[P('m7 7 10 10M17 7v10H7')],up:[P('M7 17 17 7M7 7h10v10')],warn:[P('m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z'),P('M12 9v4M12 17h.01')],
  info:[C(12,12,10),P('M12 16v-4M12 8h.01')],ext:[P('M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5')],
  download:[P('M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3')],lock:[R(3,11,18,11,2),P('M7 11V7a5 5 0 0 1 10 0v4')],
@@ -730,31 +735,34 @@ function analysisHelp(){
  const dl=h('dl',{class:'stats-dl'});for(const [label,text] of rows)dl.append(h('dt',{text:label}),h('dd',{text}));
  return h('details',{class:'stats-help',open:state.statsHelpOpen||null},h('summary',{text:'Números da mensagem'}),dl);
 }
+function sentIcon(sent){return h('span',{class:sent?'st ok':'st',title:sent?'Enviada':'Falta enviar','aria-label':sent?'Enviada':'Falta enviar'},svg(sent?'check':'circle',12));}
 function alertActions(entry,day,kind){
  const expanded=kind==='opening'?state.alertDay===day:state.currentOpen;
  const copyAction=kind==='opening'?'copy':'copy-current',sentAction=kind==='opening'?'sent':'sent-current',viewAction=kind==='opening'?'select-summary':'toggle-current';
  const sent=!!entry.sentAt;
  return h('div',{class:sent?'acard':'acard wait'},
-  h('div',{class:'hd'},h('b',{text:kind==='opening'?'Abertura':'Agora'}),h('span',{class:sent?'st ok':'st no',text:sent?'enviada':'falta enviar'})),
-  h('div',{class:'fact',text:`${summary(entry)} · ${shortTime(entry.updatedAt||entry.at)}`}),
-  h('div',{class:'row'},btn('Copiar',copyAction,{kind:'primary',sm:true,icon:'copy',data:{id:entry.id,day}}),sent?null:btn('Enviado',sentAction,{sm:true,icon:'check',data:{id:entry.id,day}}),btn(expanded?'Ocultar':'Texto',viewAction,{kind:'ghost',sm:true,data:{day,view:'alerts'}})),
-  expanded?h('pre',{class:'msg',text:rewriteNames(entry.text)}):null);
+  h('button',{type:'button',class:'acard-hit',dataset:{action:viewAction,id:entry.id,day,view:'alerts'},'aria-expanded':String(expanded)},
+   h('span',{class:'hd'},h('b',{text:kind==='opening'?'Abertura':'Agora'}),sentIcon(sent)),
+   h('span',{class:'fact',text:`${summary(entry)} · ${shortTime(entry.updatedAt||entry.at)}`}),
+   expanded?h('pre',{class:'msg',text:rewriteNames(entry.text)}):null),
+  h('div',{class:'row'},btn('Copiar',copyAction,{kind:'primary',sm:true,icon:'copy',data:{id:entry.id,day}}),sent?null:btn('Enviado',sentAction,{sm:true,icon:'check',data:{id:entry.id,day}})));
 }
 function renderAlerts(){const day=dayId(new Date()),entry=daily(day)[0],current=readCurrent(day);
  if(!entry&&!current){body.append(h('div',{class:'empty'},h('div',{class:'ci'},svg('inbox',22)),h('div',{class:'et',text:'Nenhuma mensagem ainda'}),h('div',{class:'ed',text:`A abertura é gravada uma vez, depois das ${config.opening} (Brasília), e não muda mais.`})));return;}
- const offlineNow=collectOfflineNow(day),returned=collectReturnedToday(day);
- if(entry)body.append(alertActions(entry,day,'opening'));
- if(current)body.append(alertActions(current,day,'current'));
+ const offlineNow=collectOfflineNow(day),returned=collectReturnedToday(day),stack=h('div',{class:'acards'});
+ if(entry)stack.append(alertActions(entry,day,'opening'));
+ if(current)stack.append(alertActions(current,day,'current'));
  const fus=config.followUpMinutes?readFollowUps(day):[];
  if(fus.length){
   const fsec=h('div',{class:fus.some(f=>!f.sentAt)?'acard wait':'acard'},h('div',{class:'hd'},h('b',{text:'Mudou'})));
   const flist=h('div',{class:'list-day'});
   for(const fu of fus){const open=state.alertFollowUp===fu.id;
    flist.append(h('button',{type:'button',class:'ti',dataset:{action:'select-followup',id:fu.id,day},'aria-expanded':String(open),'aria-controls':`tmx-followup-${fu.id}`},
-    h('span',{class:'tm',text:shortTime(fu.updatedAt||fu.at)}),h('div',{class:'grow'},h('div',{class:'lb trunc',text:followUpHeadline(fu)})),h('span',{class:fu.sentAt?'st ok':'st no',text:fu.sentAt?'enviado':'falta enviar'}),svg(open?'chevD':'chevR',14)));
-   flist.append(open?followUpDetail(fu,day):h('div',{id:`tmx-followup-${fu.id}`,hidden:true}));}
-  fsec.append(flist);body.append(fsec);
+    h('span',{class:'tm',text:shortTime(fu.updatedAt||fu.at)}),h('div',{class:'grow'},h('div',{class:'lb trunc',text:followUpHeadline(fu)})),sentIcon(!!fu.sentAt)));
+   flist.append(open?h('div',{dataset:{action:'select-followup',id:fu.id,day}},followUpDetail(fu,day)):h('div',{id:`tmx-followup-${fu.id}`,hidden:true}));}
+  fsec.append(flist);stack.append(fsec);
  }
+ if(stack.childNodes.length)body.append(stack);
  if(offlineNow.length){body.append(h('div',{class:'day-hd',text:`Offline (${offlineNow.length})`}));const list=h('div',{class:'list-day'});for(const r of offlineNow)list.append(offlineNowLine(r));body.append(list);}
  if(returned.length){body.append(h('div',{class:'day-hd',text:`Voltaram (${returned.length})`}));const list=h('div',{class:'list-day'});for(const e of returned.slice(0,50))list.append(returnedLine(e));if(returned.length>50)list.append(h('div',{class:'sub',text:`+ ${returned.length-50} no CSV`}));body.append(list);}
  body.append(analysisHelp());
@@ -868,7 +876,7 @@ function addServer(){const input=body.querySelector('.server-url');
   input.value='';GM_setValue(COMMAND,{id:tabId+Date.now()});toast('success','Servidor adicionado',`Clique Conectar em ${s.name} para fazer login.`);render();}
  catch(e){const msg=e instanceof TypeError?'Digite uma URL completa, como https://servidor:5001.':e.message;input.setAttribute('aria-invalid','true');toast('error','Não foi possível adicionar',msg);}}
 root.addEventListener('click',async event=>{
- const target=event.target.closest('button');
+ const target=event.target.closest('button')||event.target.closest('[data-action]');
  if(state.menu&&!(target&&(target.closest('.menu')||target.dataset.action==='export-menu'))){state.menu=false;render();if(!target)return;}
  if(!target){const card=event.target.closest('[data-expand]');if(card&&!event.target.closest('.sbc-list')){toggleDisclosure('servers',card.dataset.expand);}return;}
  if(target===icon){if(icon.dataset.dragged){delete icon.dataset.dragged;return;}openPanel(true,true,true);render();return;}
