@@ -1,6 +1,6 @@
 # Monitor de SBCs 3CX
 
-Versão publicada: **1.0.3**
+Versão publicada: **1.0.4**
 
 ## Instalar
 

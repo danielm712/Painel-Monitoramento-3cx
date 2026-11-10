@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         3CX | Monitor de SBCs
 // @namespace    local.3cx.sbc.monitor
-// @version      1.0.3
+// @version      1.0.4
 // @description  Monitor de SBCs em qualquer aba. Abertura do dia fixa, situação atual separada e atualização pelo próprio painel.
 // @updateURL    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // @downloadURL  https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
@@ -17,7 +17,7 @@
 // ==/UserScript==
 
 // REGRA DE PUBLICAÇÃO — obrigatória para qualquer IA que altere este arquivo:
-// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.3 → 1.0.4).
+// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.4 → 1.0.5).
 // 2. Mantenha @updateURL, @downloadURL e UPDATE_URL iguais a:
 //    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // 3. Copie este arquivo para o clone do repositório como monitor-sbc.user.js.
@@ -54,7 +54,7 @@ config=loadConfig(config);
 const state={open:!!layout.open,section:['history','alerts'].includes(layout.section)?layout.section:'servers',settings:false,view:'all',filter:'all',busy:false,lastPoll:0,snapshots:{},captureMessage:'',alertDay:null,historyDay:null,alertFollowUp:null,currentOpen:false,editingNameOrigin:null,statsHelpOpen:false,technicalOpen:false,technicalScroll:0,pendingAlert:GM_getValue(PENDING_ALERT_KEY,null),expanded:null,historyFilter:['all','caiu','voltou','sessao','info','erro'].includes(layout.historyFilter)?layout.historyFilter:'all',prefs:false,returnTo:'',menu:false,confirm:false,hiddenTab:false,startedAt:Date.now(),errorDetails:''};
 let stopped=false, acquiring=false, leader=false, commandSeen=GM_getValue(COMMAND,null)?.id, pollStart=0, captureBusy=false;
 // ---- UI 0.9.3: tokens, Shadow DOM, helpers (DOM nodes only: h() + createElementNS) ----
-const VERSION='1.0.3', PREFS='sbc-monitor-v91:prefs';
+const VERSION='1.0.4', PREFS='sbc-monitor-v91:prefs';
 const PREF_DEFAULTS=Object.freeze({theme:'auto',compact:false,animations:true,anySite:true,rememberPosition:true});
 function loadPrefs(v){const p={...PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})};if(!['light','dark','auto'].includes(p.theme))p.theme='auto';for(const k of ['compact','animations','anySite','rememberPosition'])p[k]=!!p[k];return p;}
 let prefs=loadPrefs(GM_getValue(PREFS,null));
@@ -158,6 +158,14 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .ti.compact-evt{cursor:default;padding:var(--sp-2) 0}
 .min0{min-width:0}
 .follow-sec{margin-top:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--border)}
+.acard{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--bg);flex:none}
+.acard.wait{border-color:color-mix(in srgb,var(--warning) 50%,var(--border))}
+.acard .hd{display:flex;align-items:baseline;gap:8px}
+.acard .hd b{font-size:var(--fs-sm);font-weight:600;color:var(--text-muted)}
+.acard .fact{font-size:var(--fs-lg);font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.st{margin-left:auto;font-size:var(--fs-xs);font-weight:600;flex:none}
+.st.ok{color:var(--success)}
+.st.no{color:var(--warning)}
 .tw{border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;flex:none}
 table{width:100%;border-collapse:collapse}
 th{position:sticky;top:0;background:var(--bg-subtle);color:var(--text-muted);font-size:var(--fs-sm);font-weight:600;text-align:left;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--border)}
@@ -519,7 +527,7 @@ function followUpAckAt(day){const ack=GM_getValue(FOLLOWUP_ACK+day,null);if(ack)
 function transitionSince(day,since){return GM_getValue(logKey(day),[]).filter(e=>e.at>since&&((e.type==='offline_detectado'&&e.details==='Mudou de online para offline')||e.type==='online_restabelecido')).sort((a,b)=>a.at.localeCompare(b.at));}
 function readFollowUps(day){const list=GM_getValue(FOLLOWUP+day,[]);return Array.isArray(list)?list:[];}
 function saveFollowUps(day,list){GM_setValue(FOLLOWUP+day,list);}
-function followUpHeadline(f){const p=[];if(f.falls)p.push(`${f.falls} ${f.falls===1?'queda':'quedas'}`);if(f.returns)p.push(`${f.returns} ${f.returns===1?'voltou':'voltaram'}`);return p.length?p.join(' · '):'Sem mudanças';}
+function followUpHeadline(f){const p=[];if(f.falls)p.push(`${f.falls} ${f.falls===1?'caiu':'caíram'}`);if(f.returns)p.push(`${f.returns} ${f.returns===1?'voltou':'voltaram'}`);return p.length?p.join(' · '):'Sem mudanças';}
 function composeFollowUpText(events,infos,nowIso){
  const falls=events.filter(e=>e.type==='offline_detectado'),returns=events.filter(e=>e.type==='online_restabelecido');
  const body=[...falls.map(e=>`🔴 *${labelOf(e)}* · ${e.sbc} · caiu ${shortTime(e.at)}`),...returns.map(e=>`🟢 *${labelOf(e)}* · ${e.sbc} · voltou ${shortTime(e.at)}${awayLabel(e.durationMinutes)}`)];
@@ -696,8 +704,8 @@ function renderError(){
 }
 // ---- Alerts ----
 function headline(e){if(e.type==='opening')return'Abertura do dia';if(e.type==='offline')return`${e.server} · ${e.sbc} ficou offline`;if(e.type==='online')return`${e.server} · ${e.sbc} voltou`;return e.label||'Mensagem';}
-function summary(e){const t=e.text||'';if(e.type==='opening'){if(e.stats?.active===0)return'Sem leitura atual · totais não confirmados';const n=(t.match(/🔴/g)||[]).length,on=(t.match(/Online: (\d+)/)||[])[1];return `${n} SBC${n===1?'':'s'} offline${on?` · ${on} online`:''}${e.stats&&e.stats.active<e.stats.total?' · leitura parcial':''}`;}
- if(e.type==='current')return `${e.stats?.offline??0} offline no alerta · ${e.stats?.falls??0} quedas confirmadas · ${e.stats?.returns??0} recuperações`;
+function summary(e){const t=e.text||'',partial=e.stats&&e.stats.active<e.stats.total?' · leitura parcial':'';if(e.type==='opening'){if(e.stats?.active===0)return'Sem leitura';const n=(t.match(/🔴/g)||[]).length,on=(t.match(/Online: (\d+)/)||[])[1];return `${n} offline${on?` · ${on} online`:''}${partial}`;}
+ if(e.type==='current')return `${e.stats?.offline??0} offline agora${partial}`;
  if(e.type==='online'){const m=(t.match(/~([\d.,]+) min/)||[])[1];return m?`fora por ~${m} min`:'voltou online';}if(e.type==='offline')return'ficou offline';return e.label||'';}
 function summaryDetail(entry,day,view){return h('div',{class:'card pending summary-detail',id:`tmx-summary-${view}-${day}`,role:'region','aria-label':`Mensagem de ${dateLabel(entry.at)}`},
  h('pre',{class:'msg',text:rewriteNames(entry.text)}),
@@ -714,44 +722,42 @@ function durSince(iso){if(!iso)return'';const min=Math.max(0,Math.round((Date.no
 function awayLabel(minutes){if(minutes==null)return'';if(minutes<60)return` · fora cerca de ${String(minutes).replace('.',',')} min`;const h=Math.round(minutes/6)/10;return` · fora cerca de ${String(h).replace('.',',')} h`;}
 function collectOfflineNow(day){const rows=[];for(const s of servers){const hh=health(s);if(hh.kind!=='active')continue;const states=GM_getValue(stateKey(s),{});for(const item of hh.items){if(item.state!=='offline')continue;const rec=states[item.name];rows.push({server:s.name,sbc:item.name,since:rec?.since||offlineSinceIso(s,item.name,day),pending:!!(rec&&!rec.baseline&&!rec.confirmed)});}}rows.sort((a,b)=>(a.since||'z').localeCompare(b.since||'z'));return rows;}
 function collectReturnedToday(day){return GM_getValue(logKey(day),[]).filter(e=>e.type==='online_restabelecido').sort((a,b)=>b.at.localeCompare(a.at));}
-function offlineNowLine(r){const wait=r.pending?`oscilação · entra no alerta após ${config.minOfflineMinutes} min`:(r.since?`offline desde ${whenLabel(r.since)} · ${durSince(r.since)}`:'offline · horário não registrado');return h('div',{class:'ti compact-evt'},h('span',{class:'tm',text:r.since?shortTime(r.since):'—'}),h('span',{class:`dot tone-${r.pending?'w':'d'}`}),h('div',{class:'grow min0'},h('div',{class:'lb trunc',text:`${r.server} · ${r.sbc}`}),h('div',{class:'sub trunc',text:wait})));}
-function returnedLine(e){return h('div',{class:'ti compact-evt'},h('span',{class:'tm',text:shortTime(e.at)}),h('span',{class:'dot tone-s'}),h('div',{class:'grow min0'},h('div',{class:'lb trunc',text:`${labelOf(e)} · ${e.sbc}`}),h('div',{class:'sub trunc',text:`voltou às ${shortTime(e.at)}${awayLabel(e.durationMinutes)}`})));
+function offlineNowLine(r){const wait=r.pending?`oscilação · aguarda ${config.minOfflineMinutes} min`:(r.since?durSince(r.since):'');return h('div',{class:'ti compact-evt'},h('span',{class:'tm',text:r.since?shortTime(r.since):'—'}),h('span',{class:`dot tone-${r.pending?'w':'d'}`}),h('div',{class:'grow min0'},h('div',{class:'lb trunc',text:`${r.server} · ${r.sbc}`}),wait?h('div',{class:'sub trunc',text:wait}):null));}
+function returnedLine(e){const away=awayLabel(e.durationMinutes).replace(/^ · /,'');return h('div',{class:'ti compact-evt'},h('span',{class:'tm',text:shortTime(e.at)}),h('span',{class:'dot tone-s'}),h('div',{class:'grow min0'},h('div',{class:'lb trunc',text:`${labelOf(e)} · ${e.sbc}`}),away?h('div',{class:'sub trunc',text:away}):null));
 }
 function analysisHelp(){
  const rows=[['Quedas observadas','Vezes em que algum SBC passou de online para offline. O mesmo SBC pode contar mais de uma vez.'],['Recuperações','Vezes em que um SBC que estava offline voltou a ficar online.'],['Offline na abertura observada','Quantos SBCs já estavam offline no primeiro resumo do dia, depois do horário de abertura.'],['Pico observado','Maior quantidade de SBCs offline ao mesmo tempo durante o dia.']];
  const dl=h('dl',{class:'stats-dl'});for(const [label,text] of rows)dl.append(h('dt',{text:label}),h('dd',{text}));
- return h('details',{class:'stats-help',open:state.statsHelpOpen||null},h('summary',{text:'O que significa a análise do dia'}),dl);
+ return h('details',{class:'stats-help',open:state.statsHelpOpen||null},h('summary',{text:'Números da mensagem'}),dl);
 }
 function alertActions(entry,day,kind){
  const expanded=kind==='opening'?state.alertDay===day:state.currentOpen;
  const copyAction=kind==='opening'?'copy':'copy-current',sentAction=kind==='opening'?'sent':'sent-current',viewAction=kind==='opening'?'select-summary':'toggle-current';
- return h('div',{},
-  h('div',{class:'day-hd',text:kind==='opening'?'Abertura do dia':'Situação atual'}),
-  h('div',{class:'row wrap'},badge(entry.sentAt?'s':'w',entry.sentAt?'Enviado':'Pendente de envio'),h('span',{class:'sub grow',text:`${summary(entry)} · ${shortTime(entry.updatedAt||entry.at)}`})),
-  h('div',{class:'row'},btn(kind==='opening'?'Copiar abertura':'Copiar situação',copyAction,{kind:'primary',icon:'copy',data:{id:entry.id,day}}),entry.sentAt?null:btn('Marcar enviado',sentAction,{icon:'check',data:{id:entry.id,day}}),btn(expanded?'Ocultar texto':'Ver texto',viewAction,{kind:'ghost',sm:true,data:{day,view:'alerts'}})),
-  kind==='opening'?analysisHelp():h('div',{class:'sub',text:'Este texto muda quando a lista offline confirmada muda. A abertura do dia não é reescrita.'}),
-  expanded&&kind==='opening'?summaryDetail(entry,day,'alerts'):null);
+ const sent=!!entry.sentAt;
+ return h('div',{class:sent?'acard':'acard wait'},
+  h('div',{class:'hd'},h('b',{text:kind==='opening'?'Abertura':'Agora'}),h('span',{class:sent?'st ok':'st no',text:sent?'enviada':'falta enviar'})),
+  h('div',{class:'fact',text:`${summary(entry)} · ${shortTime(entry.updatedAt||entry.at)}`}),
+  h('div',{class:'row'},btn('Copiar',copyAction,{kind:'primary',sm:true,icon:'copy',data:{id:entry.id,day}}),sent?null:btn('Enviado',sentAction,{sm:true,icon:'check',data:{id:entry.id,day}}),btn(expanded?'Ocultar':'Texto',viewAction,{kind:'ghost',sm:true,data:{day,view:'alerts'}})),
+  expanded?h('pre',{class:'msg',text:rewriteNames(entry.text)}):null);
 }
 function renderAlerts(){const day=dayId(new Date()),entry=daily(day)[0],current=readCurrent(day);
  if(!entry&&!current){body.append(h('div',{class:'empty'},h('div',{class:'ci'},svg('inbox',22)),h('div',{class:'et',text:'Nenhuma mensagem ainda'}),h('div',{class:'ed',text:`A abertura é gravada uma vez, depois das ${config.opening} (Brasília), e não muda mais.`})));return;}
  const offlineNow=collectOfflineNow(day),returned=collectReturnedToday(day);
  if(entry)body.append(alertActions(entry,day,'opening'));
- if(current){body.append(alertActions(current,day,'current'));if(state.currentOpen)body.append(summaryDetail(current,day,'alerts'));}
+ if(current)body.append(alertActions(current,day,'current'));
  const fus=config.followUpMinutes?readFollowUps(day):[];
  if(fus.length){
-  const fsec=h('div',{class:'follow-sec'},h('div',{class:'day-hd',text:`Acompanhamentos (${fus.length})`}));
+  const fsec=h('div',{class:fus.some(f=>!f.sentAt)?'acard wait':'acard'},h('div',{class:'hd'},h('b',{text:'Mudou'})));
   const flist=h('div',{class:'list-day'});
   for(const fu of fus){const open=state.alertFollowUp===fu.id;
    flist.append(h('button',{type:'button',class:'ti',dataset:{action:'select-followup',id:fu.id,day},'aria-expanded':String(open),'aria-controls':`tmx-followup-${fu.id}`},
-    h('span',{class:'tm',text:shortTime(fu.updatedAt||fu.at)}),h('div',{class:'grow'},h('div',{class:'lb trunc',text:followUpHeadline(fu)}),h('div',{class:'sub trunc',text:fu.sentAt?`Enviado ${shortTime(fu.sentAt)}`:'Pendente · expandir para copiar'})),badge(fu.sentAt?'s':'w',fu.sentAt?'Enviado':'Pendente'),svg(open?'chevD':'chevR',14)));
+    h('span',{class:'tm',text:shortTime(fu.updatedAt||fu.at)}),h('div',{class:'grow'},h('div',{class:'lb trunc',text:followUpHeadline(fu)})),h('span',{class:fu.sentAt?'st ok':'st no',text:fu.sentAt?'enviado':'falta enviar'}),svg(open?'chevD':'chevR',14)));
    flist.append(open?followUpDetail(fu,day):h('div',{id:`tmx-followup-${fu.id}`,hidden:true}));}
   fsec.append(flist);body.append(fsec);
  }
- if(offlineNow.length){body.append(h('div',{class:'day-hd',text:`Offline agora (${offlineNow.length})`}));const list=h('div',{class:'list-day'});for(const r of offlineNow)list.append(offlineNowLine(r));body.append(list);}
- if(returned.length){body.append(h('div',{class:'day-hd',text:`Voltaram hoje (${returned.length})`}));const list=h('div',{class:'list-day'});for(const e of returned.slice(0,50))list.append(returnedLine(e));if(returned.length>50)list.append(h('div',{class:'sub',text:`+ ${returned.length-50} no CSV`}));body.append(list);}
- if(!offlineNow.length&&!returned.length&&!fus.length)body.append(h('div',{class:'sub',text:'Nenhum SBC offline na leitura atual e nenhuma recuperação registrada hoje.'}));
- const fuHint=config.followUpMinutes?`Leitura ${config.intervalSeconds} s · acompanhamento a cada ${config.followUpMinutes} min`:`Leitura a cada ${config.intervalSeconds} s · acompanhamento desligado`;
- body.append(h('div',{class:'sub',text:`${fuHint} · Configurações.`}));
+ if(offlineNow.length){body.append(h('div',{class:'day-hd',text:`Offline (${offlineNow.length})`}));const list=h('div',{class:'list-day'});for(const r of offlineNow)list.append(offlineNowLine(r));body.append(list);}
+ if(returned.length){body.append(h('div',{class:'day-hd',text:`Voltaram (${returned.length})`}));const list=h('div',{class:'list-day'});for(const e of returned.slice(0,50))list.append(returnedLine(e));if(returned.length>50)list.append(h('div',{class:'sub',text:`+ ${returned.length-50} no CSV`}));body.append(list);}
+ body.append(analysisHelp());
 }
 // ---- History ----
 const TONE={caiu:['d','down'],voltou:['s','up'],sessao:['w','warn'],info:['i','info'],erro:['n','xCircle']};
