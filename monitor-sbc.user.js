@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         3CX | Monitor de SBCs
 // @namespace    local.3cx.sbc.monitor
-// @version      1.0.2
+// @version      1.0.3
 // @description  Monitor de SBCs em qualquer aba. Abertura do dia fixa, situação atual separada e atualização pelo próprio painel.
 // @updateURL    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // @downloadURL  https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
@@ -15,6 +15,17 @@
 // @grant        GM_xmlhttpRequest
 // @connect      *
 // ==/UserScript==
+
+// REGRA DE PUBLICAÇÃO — obrigatória para qualquer IA que altere este arquivo:
+// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.3 → 1.0.4).
+// 2. Mantenha @updateURL, @downloadURL e UPDATE_URL iguais a:
+//    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
+// 3. Copie este arquivo para o clone do repositório como monitor-sbc.user.js.
+// 4. Atualize "Versão publicada" no README.md do mesmo repositório.
+// 5. Faça commit e git push na branch main de:
+//    https://github.com/danielm712/Painel-Monitoramento-3cx.git
+// Sem esse push, Verificar atualização não entrega a versão nova aos analistas.
+// Vale para esta conversa e para qualquer outra IA que edite o script.
 
 (() => {
 'use strict';
@@ -35,9 +46,6 @@ const DAILY='sbc-monitor-v9:daily:', LEASE='sbc-monitor-v9:leader', COMMAND='sbc
 const CHECK_MS=60000, STALE_MS=150000, LEASE_MS=20000;
 const SUMMARY='sbc-monitor-v92:summary:', CURRENT='sbc-monitor-v10:current:', FOLLOWUP='sbc-monitor-v95:followups:', FOLLOWUP_ACK='sbc-monitor-v95:followup-ack:', FOLLOWUP_META='sbc-monitor-v95:followup-meta:', ZONE='America/Sao_Paulo';
 const UPDATE_URL='https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js', RETENTION_DAYS=30;
-// Atualização: o botão baixa este mesmo arquivo no GitHub e compara o @version.
-// Publicar versão nova: aumentar @version e VERSION, substituir monitor-sbc.user.js na branch main.
-// Editar o arquivo neste computador não envia nada ao GitHub até o push.
 function loadConfig(v){const o=v&&typeof v==='object'?v:{};const url=typeof o.updateUrl==='string'&&/^https:\/\/\S+\.user\.js(?:\?.*)?$/.test(o.updateUrl.trim())?o.updateUrl.trim():'';return {...o,opening:/^([01]\d|2[0-3]):[0-5]\d$/.test(o?.opening)?o.opening:'08:00',intervalSeconds:Number.isInteger(o?.intervalSeconds)&&o.intervalSeconds>=30&&o.intervalSeconds<=3600?o.intervalSeconds:CHECK_MS/1000,followUpMinutes:Number.isInteger(o?.followUpMinutes)&&o.followUpMinutes>=0&&o.followUpMinutes<=240?o.followUpMinutes:15,minOfflineMinutes:Number.isInteger(o?.minOfflineMinutes)&&o.minOfflineMinutes>=1&&o.minOfflineMinutes<=30?o.minOfflineMinutes:3,updateUrl:url};}
 const checkMs=()=>config.intervalSeconds*1000;
 const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
@@ -46,7 +54,7 @@ config=loadConfig(config);
 const state={open:!!layout.open,section:['history','alerts'].includes(layout.section)?layout.section:'servers',settings:false,view:'all',filter:'all',busy:false,lastPoll:0,snapshots:{},captureMessage:'',alertDay:null,historyDay:null,alertFollowUp:null,currentOpen:false,editingNameOrigin:null,statsHelpOpen:false,technicalOpen:false,technicalScroll:0,pendingAlert:GM_getValue(PENDING_ALERT_KEY,null),expanded:null,historyFilter:['all','caiu','voltou','sessao','info','erro'].includes(layout.historyFilter)?layout.historyFilter:'all',prefs:false,returnTo:'',menu:false,confirm:false,hiddenTab:false,startedAt:Date.now(),errorDetails:''};
 let stopped=false, acquiring=false, leader=false, commandSeen=GM_getValue(COMMAND,null)?.id, pollStart=0, captureBusy=false;
 // ---- UI 0.9.3: tokens, Shadow DOM, helpers (DOM nodes only: h() + createElementNS) ----
-const VERSION='1.0.2', PREFS='sbc-monitor-v91:prefs';
+const VERSION='1.0.3', PREFS='sbc-monitor-v91:prefs';
 const PREF_DEFAULTS=Object.freeze({theme:'auto',compact:false,animations:true,anySite:true,rememberPosition:true});
 function loadPrefs(v){const p={...PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})};if(!['light','dark','auto'].includes(p.theme))p.theme='auto';for(const k of ['compact','animations','anySite','rememberPosition'])p[k]=!!p[k];return p;}
 let prefs=loadPrefs(GM_getValue(PREFS,null));

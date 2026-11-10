@@ -1,0 +1,16 @@
+---
+description: Ao alterar o monitor de SBCs, publica a versão nova no GitHub para os analistas.
+globs: "monitor-sbc.user.js"
+alwaysApply: true
+---
+
+# Publicar o monitor de SBCs
+
+Ao terminar qualquer alteração em `monitor-sbc.user.js`:
+
+1. Aumente `// @version` e a constante `VERSION` juntos, no formato `x.y.z`.
+2. Mantenha `@updateURL`, `@downloadURL` e `UPDATE_URL` em `https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js`.
+3. Atualize **Versão publicada** no `README.md`.
+4. Faça commit e `git push` na branch `main` de `https://github.com/danielm712/Painel-Monitoramento-3cx.git`.
+
+Sem o push, **Verificar atualização** continua na versão anterior. A mesma regra está no topo do script e vale para outra IA.
