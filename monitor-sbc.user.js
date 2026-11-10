@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         3CX | Monitor de SBCs
 // @namespace    local.3cx.sbc.monitor
-// @version      1.0.6
+// @version      1.0.7
 // @description  Monitor de SBCs em qualquer aba. Abertura do dia fixa, situação atual separada e atualização pelo próprio painel.
 // @updateURL    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // @downloadURL  https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
@@ -17,7 +17,7 @@
 // ==/UserScript==
 
 // REGRA DE PUBLICAÇÃO — obrigatória para qualquer IA que altere este arquivo:
-// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.6 → 1.0.7).
+// 1. Aumente // @version e a constante VERSION juntos (exemplo: 1.0.7 → 1.0.8).
 // 2. Mantenha @updateURL, @downloadURL e UPDATE_URL iguais a:
 //    https://raw.githubusercontent.com/danielm712/Painel-Monitoramento-3cx/main/monitor-sbc.user.js
 // 3. Copie este arquivo para o clone do repositório como monitor-sbc.user.js.
@@ -54,7 +54,7 @@ config=loadConfig(config);
 const state={open:!!layout.open,section:['history','alerts'].includes(layout.section)?layout.section:'servers',settings:false,view:'all',filter:'all',busy:false,lastPoll:0,snapshots:{},captureMessage:'',alertDay:null,historyDay:null,alertFollowUp:null,currentOpen:false,editingNameOrigin:null,statsHelpOpen:false,technicalOpen:false,technicalScroll:0,pendingAlert:GM_getValue(PENDING_ALERT_KEY,null),expanded:null,historyFilter:['all','caiu','voltou','sessao','info','erro'].includes(layout.historyFilter)?layout.historyFilter:'all',prefs:false,returnTo:'',menu:false,confirm:false,hiddenTab:false,startedAt:Date.now(),errorDetails:''};
 let stopped=false, acquiring=false, leader=false, commandSeen=GM_getValue(COMMAND,null)?.id, pollStart=0, captureBusy=false;
 // ---- UI 0.9.3: tokens, Shadow DOM, helpers (DOM nodes only: h() + createElementNS) ----
-const VERSION='1.0.6', PREFS='sbc-monitor-v91:prefs';
+const VERSION='1.0.7', PREFS='sbc-monitor-v91:prefs';
 const PREF_DEFAULTS=Object.freeze({theme:'auto',compact:false,animations:true,anySite:true,rememberPosition:true});
 function loadPrefs(v){const p={...PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})};if(!['light','dark','auto'].includes(p.theme))p.theme='auto';for(const k of ['compact','animations','anySite','rememberPosition'])p[k]=!!p[k];return p;}
 let prefs=loadPrefs(GM_getValue(PREFS,null));
@@ -160,7 +160,9 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .follow-sec{margin-top:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--border)}
 .acards{display:flex;flex-direction:column;gap:4px;flex:none}
 .acard{display:flex;flex-direction:column;gap:2px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);flex:none}
-.acard.wait{border-color:color-mix(in srgb,var(--warning) 35%,var(--border))}
+.acard.open{background:color-mix(in srgb,var(--info) 9%,var(--bg));border-color:color-mix(in srgb,var(--info) 28%,var(--border))}
+.acard.now{background:color-mix(in srgb,var(--accent) 9%,var(--bg));border-color:color-mix(in srgb,var(--accent) 28%,var(--border))}
+.acard.delta{background:color-mix(in srgb,var(--success) 10%,var(--bg));border-color:color-mix(in srgb,var(--success) 28%,var(--border))}
 .acard-hit{display:flex;flex-direction:column;align-items:stretch;gap:0;width:100%;text-align:left}
 .acard .hd{display:flex;align-items:center;gap:4px;min-width:0}
 .acard .mini{color:var(--text-subtle);opacity:.7}
@@ -734,20 +736,22 @@ function returnedLine(e){const away=awayLabel(e.durationMinutes).replace(/^ · /
 function analysisHelp(){
  const rows=[['Quedas observadas','Vezes em que algum SBC passou de online para offline. O mesmo SBC pode contar mais de uma vez.'],['Recuperações','Vezes em que um SBC que estava offline voltou a ficar online.'],['Offline na abertura observada','Quantos SBCs já estavam offline no primeiro resumo do dia, depois do horário de abertura.'],['Pico observado','Maior quantidade de SBCs offline ao mesmo tempo durante o dia.']];
  const dl=h('dl',{class:'stats-dl'});for(const [label,text] of rows)dl.append(h('dt',{text:label}),h('dd',{text}));
- return h('details',{class:'stats-help',open:state.statsHelpOpen||null},h('summary',{text:'Números da mensagem'}),dl);
+ return h('details',{class:'stats-help',open:state.statsHelpOpen||null},h('summary',{text:'Entenda o texto'}),dl);
 }
 function sentIcon(sent){return sent?h('span',{class:'st ok',title:'Enviada','aria-label':'Enviada'},svg('check',11)):h('span',{class:'st dot-wait',title:'Falta enviar','aria-label':'Falta enviar'});}
 function alertCard(o){
- const sent=!!o.sent;
- return h('div',{class:sent?'acard':'acard wait'},
+ const sent=!!o.sent,actions=[];
+ if(o.expanded)actions.push(btn('Copiar',o.copyAction,{kind:'primary',sm:true,icon:'copy',data:{id:o.id,day:o.day}}));
+ if(!sent)actions.push(btn('Enviado',o.sentAction,{sm:true,icon:'check',data:{id:o.id,day:o.day}}));
+ return h('div',{class:`acard ${o.tone}`},
   h('button',{type:'button',class:'acard-hit',dataset:o.toggle,'aria-expanded':String(!!o.expanded)},
    h('span',{class:'hd'},svg(o.expanded?'chevD':'chevR',11,'mini'),h('b',{text:o.title}),h('span',{class:'fact grow trunc',text:o.fact}),sentIcon(sent)),
    o.expanded?h('pre',{class:'msg',text:o.text}):null),
-  h('div',{class:'row'},btn('Copiar',o.copyAction,{kind:'primary',sm:true,icon:'copy',data:{id:o.id,day:o.day}}),sent?null:btn('Enviado',o.sentAction,{sm:true,icon:'check',data:{id:o.id,day:o.day}})));
+  actions.length?h('div',{class:'row'},actions):null);
 }
 function alertActions(entry,day,kind){
  const expanded=kind==='opening'?state.alertDay===day:state.currentOpen;
- return alertCard({title:kind==='opening'?'Abertura':'Agora',sent:entry.sentAt,fact:`${summary(entry)} · ${shortTime(entry.updatedAt||entry.at)}`,expanded,text:rewriteNames(entry.text),id:entry.id,day,copyAction:kind==='opening'?'copy':'copy-current',sentAction:kind==='opening'?'sent':'sent-current',toggle:{action:kind==='opening'?'select-summary':'toggle-current',id:entry.id,day,view:'alerts'}});
+ return alertCard({tone:kind==='opening'?'open':'now',title:kind==='opening'?'Abertura':'Agora',sent:entry.sentAt,fact:`${summary(entry)} · ${shortTime(entry.updatedAt||entry.at)}`,expanded,text:rewriteNames(entry.text),id:entry.id,day,copyAction:kind==='opening'?'copy':'copy-current',sentAction:kind==='opening'?'sent':'sent-current',toggle:{action:kind==='opening'?'select-summary':'toggle-current',id:entry.id,day,view:'alerts'}});
 }
 function renderAlerts(){const day=dayId(new Date()),entry=daily(day)[0],current=readCurrent(day);
  if(!entry&&!current){body.append(h('div',{class:'empty'},h('div',{class:'ci'},svg('inbox',22)),h('div',{class:'et',text:'Nenhuma mensagem ainda'}),h('div',{class:'ed',text:`A abertura é gravada uma vez, depois das ${config.opening} (Brasília), e não muda mais.`})));return;}
@@ -755,7 +759,7 @@ function renderAlerts(){const day=dayId(new Date()),entry=daily(day)[0],current=
  if(entry)stack.append(alertActions(entry,day,'opening'));
  if(current)stack.append(alertActions(current,day,'current'));
  const fus=config.followUpMinutes?readFollowUps(day):[];
- for(const fu of fus){const open=state.alertFollowUp===fu.id;stack.append(alertCard({title:'Mudou',sent:fu.sentAt,fact:`${shortTime(fu.updatedAt||fu.at)} · ${followUpHeadline(fu)}`,expanded:open,text:rewriteNames(fu.text),id:fu.id,day,copyAction:'copy-followup',sentAction:'sent-followup',toggle:{action:'select-followup',id:fu.id,day}}));}
+ for(const fu of fus){const open=state.alertFollowUp===fu.id;stack.append(alertCard({tone:'delta',title:'Mudou',sent:fu.sentAt,fact:`${shortTime(fu.updatedAt||fu.at)} · ${followUpHeadline(fu)}`,expanded:open,text:rewriteNames(fu.text),id:fu.id,day,copyAction:'copy-followup',sentAction:'sent-followup',toggle:{action:'select-followup',id:fu.id,day}}));}
  if(stack.childNodes.length)body.append(stack);
  if(offlineNow.length){body.append(h('div',{class:'day-hd',text:`Offline (${offlineNow.length})`}));const list=h('div',{class:'list-day'});for(const r of offlineNow)list.append(offlineNowLine(r));body.append(list);}
  if(returned.length){body.append(h('div',{class:'day-hd',text:`Voltaram (${returned.length})`}));const list=h('div',{class:'list-day'});for(const e of returned.slice(0,50))list.append(returnedLine(e));if(returned.length>50)list.append(h('div',{class:'sub',text:`+ ${returned.length-50} no CSV`}));body.append(list);}
