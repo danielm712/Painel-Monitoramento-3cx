@@ -25,6 +25,10 @@ Depois de confirmar **Atualizar** no Tampermonkey, aplique a versão nova com a 
 
 Nome dos servidores, histórico, mensagens e a sessão do 3CX permanecem neste navegador.
 
+## Aba Alerta
+
+A aba começa pelo que está acontecendo agora: quantos SBC estão offline e há quanto tempo, só com o nome. Oscilação fica numa linha à parte e não entra nessa conta. **Para enviar** lista só as mensagens ainda não marcadas. As já marcadas vão para **Já enviadas hoje**, inclusive a abertura. Nada é enviado sozinho: **Copiar** aparece com o texto aberto, **Marcar enviado** continua manual, e Esc fecha o texto.
+
 Quem ainda está numa versão anterior à 1.0.2 instala uma vez por este link. A partir daí o botão encontra as próximas versões.
 
 ## Publicar uma versão nova
